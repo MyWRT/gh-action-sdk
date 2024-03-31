@@ -7,9 +7,10 @@ runs:
     - run: |
         echo "artifacts_dir=${ARTIFACTS_DIR:-$GITHUB_WORKSPACE}" >> "$GITHUB_OUTPUT"
         echo "feed_dir=${FEED_DIR:-$GITHUB_WORKSPACE}" >> "$GITHUB_OUTPUT"
+        echo "build_dir=${BUILD_DIR:-$GITHUB_WORKSPACE/build_dir}" >> "$GITHUB_OUTPUT"
       shell: bash
       id: inputs
-    - run: sudo chown -R 1000:1000 ${{ steps.inputs.outputs.artifacts_dir }} ${{ steps.inputs.outputs.feed_dir }}
+    - run: sudo chown -R 1000:1000 ${{ steps.inputs.outputs.artifacts_dir }} ${{ steps.inputs.outputs.feed_dir }} ${{ steps.inputs.outputs.build_dir }}
       shell: bash
     - run: |
         echo "::group::  docker build -t sdk $GITHUB_ACTION_PATH"
@@ -31,11 +32,15 @@ runs:
           --env V \
           -v ${{ steps.inputs.outputs.artifacts_dir }}:/artifacts \
           -v ${{ steps.inputs.outputs.feed_dir }}:/feed \
+          -v ${{ steps.inputs.outputs.build_dir }}:/build_dir \
           sdk
       shell: bash
     - run: sudo chown -R --reference=${{ steps.inputs.outputs.artifacts_dir }}/.. ${{ steps.inputs.outputs.artifacts_dir }}
       shell: bash
       if: always()
     - run: sudo chown -R --reference=${{ steps.inputs.outputs.feed_dir }}/.. ${{ steps.inputs.outputs.feed_dir }}
+      shell: bash
+      if: always()
+    - run: sudo chown -R --reference=${{ steps.inputs.outputs.build_dir }}/.. ${{ steps.inputs.outputs.build_dir }}
       shell: bash
       if: always()
