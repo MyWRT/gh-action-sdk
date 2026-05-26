@@ -38,12 +38,11 @@ runs:
     -
       name: Restore ccache
       if: steps.inputs.outputs.ccache_enabled == '1'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ steps.inputs.outputs.ccache_dir }}
         key: ${{ steps.inputs.outputs.ccache_key }}
         restore-keys: ${{ steps.inputs.outputs.ccache_restore_keys }}
-        save-always: true
     - run: sudo chown -R 1000:1000 ${{ steps.inputs.outputs.artifacts_dir }} ${{ steps.inputs.outputs.feed_dir }}
       shell: bash
     - run: sudo chown -R 1000:1000 "${{ steps.inputs.outputs.ccache_dir }}"
