@@ -5,12 +5,50 @@ runs:
   using: 'composite'
   steps:
     - run: |
-        echo "artifacts_dir=${ARTIFACTS_DIR:-$GITHUB_WORKSPACE}" >> "$GITHUB_OUTPUT"
-        echo "feed_dir=${FEED_DIR:-$GITHUB_WORKSPACE}" >> "$GITHUB_OUTPUT"
+        artifacts_dir="${ARTIFACTS_DIR:-$GITHUB_WORKSPACE}"
+        feed_dir="${FEED_DIR:-$GITHUB_WORKSPACE}"
+
+        echo "artifacts_dir=$artifacts_dir" >> "$GITHUB_OUTPUT"
+        echo "feed_dir=$feed_dir" >> "$GITHUB_OUTPUT"
+
+        if [ "${CCACHE:-0}" = '1' ]; then
+          ccache_dir="${CCACHE_DIR:-$GITHUB_WORKSPACE/.ccache}"
+          ccache_container="${CONTAINER:-ghcr.io/openwrt/sdk}"
+          ccache_arch="${ARCH:-mips_24kc}"
+          ccache_scope="${ccache_container}-${ccache_arch}"
+          ccache_scope="${ccache_scope//[^A-Za-z0-9_.-]/-}"
+          ccache_prefix="${CCACHE_CACHE_PREFIX:-ccache-${RUNNER_OS:-Linux}-$ccache_scope}"
+
+          echo "ccache_enabled=1" >> "$GITHUB_OUTPUT"
+          echo "ccache_dir=$ccache_dir" >> "$GITHUB_OUTPUT"
+          echo "ccache_key=$ccache_prefix-${GITHUB_RUN_ID:-0}" >> "$GITHUB_OUTPUT"
+          {
+            echo 'ccache_restore_keys<<EOF'
+            echo "$ccache_prefix-"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+        else
+          echo "ccache_enabled=0" >> "$GITHUB_OUTPUT"
+        fi
       shell: bash
       id: inputs
+    - run: mkdir -p "${{ steps.inputs.outputs.ccache_dir }}"
+      shell: bash
+      if: steps.inputs.outputs.ccache_enabled == '1'
+    -
+      name: Restore ccache
+      if: steps.inputs.outputs.ccache_enabled == '1'
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.inputs.outputs.ccache_dir }}
+        key: ${{ steps.inputs.outputs.ccache_key }}
+        restore-keys: ${{ steps.inputs.outputs.ccache_restore_keys }}
+        save-always: true
     - run: sudo chown -R 1000:1000 ${{ steps.inputs.outputs.artifacts_dir }} ${{ steps.inputs.outputs.feed_dir }}
       shell: bash
+    - run: sudo chown -R 1000:1000 "${{ steps.inputs.outputs.ccache_dir }}"
+      shell: bash
+      if: steps.inputs.outputs.ccache_enabled == '1'
     -
       name: Set up Docker QEMU
       uses: docker/setup-qemu-action@v4
@@ -34,6 +72,18 @@ runs:
         load: true
 
     - run: |
+        ccache_args=()
+        if [ "${CCACHE:-0}" = '1' ]; then
+          ccache_args=(
+            --env CCACHE=1
+            --env CCACHE_DIR=/ccache
+            --env CCACHE_MAXSIZE
+            --env CCACHE_COMPILERCHECK
+            --env CCACHE_RECACHE
+            -v "${{ steps.inputs.outputs.ccache_dir }}:/ccache"
+          )
+        fi
+
         docker run --rm \
           --env BUILD \
           --env BUILD_LOG \
@@ -48,6 +98,7 @@ runs:
           --env PACKAGES \
           --env INDEX \
           --env V \
+          "${ccache_args[@]}" \
           -v ${{ steps.inputs.outputs.artifacts_dir }}:/artifacts \
           -v ${{ steps.inputs.outputs.feed_dir }}:/feed \
           sdk
@@ -58,3 +109,6 @@ runs:
     - run: sudo chown -R --reference=${{ steps.inputs.outputs.feed_dir }}/.. ${{ steps.inputs.outputs.feed_dir }}
       shell: bash
       if: always()
+    - run: sudo chown -R "$(id -u):$(id -g)" "${{ steps.inputs.outputs.ccache_dir }}"
+      shell: bash
+      if: always() && steps.inputs.outputs.ccache_enabled == '1'

@@ -17,6 +17,36 @@ endgroup() {
 	GROUP=
 }
 
+setup_ccache() {
+	[ "${CCACHE:-0}" = '1' ] || return 0
+
+	CCACHE_DIR="${CCACHE_DIR:-/ccache}"
+	CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-1G}"
+	export CCACHE_DIR
+
+	group "ccache setup"
+	mkdir -p "$CCACHE_DIR"
+
+	if ! command -v ccache >/dev/null 2>&1; then
+		echo 'CCACHE=1 but ccache is not available in the SDK container'
+		return 1
+	fi
+
+	ccache -M "$CCACHE_MAXSIZE"
+	ccache -s || true
+
+	touch .config
+	if [ -x ./scripts/config ]; then
+		./scripts/config --file .config -e CCACHE -s CCACHE_DIR "$CCACHE_DIR"
+	else
+		{
+			echo 'CONFIG_CCACHE=y'
+			echo "CONFIG_CCACHE_DIR=\"$CCACHE_DIR\""
+		} >> .config
+	fi
+	endgroup
+}
+
 trap 'endgroup' ERR
 
 group "bash setup.sh"
@@ -64,6 +94,8 @@ endgroup
 group "feeds update -a"
 ./scripts/feeds update -a
 endgroup
+
+setup_ccache
 
 group "make defconfig"
 make defconfig
@@ -199,6 +231,12 @@ if [ "$INDEX" = '1' ];then
 		CONFIG_SIGNED_PACKAGES="$CONFIG_SIGNED_PACKAGES" \
 		V=s \
 		package/index
+	endgroup
+fi
+
+if [ "${CCACHE:-0}" = '1' ] && command -v ccache >/dev/null 2>&1; then
+	group "ccache stats"
+	ccache -s || true
 	endgroup
 fi
 

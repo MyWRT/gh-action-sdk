@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    name: Test ${{ matrix.arch }}-${{ matrix.release }}
+    name: Test ${{ matrix.arch }}-${{ matrix.release }}${{ matrix.ccache == '1' && '-ccache' || '' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,6 +19,17 @@ jobs:
           - arm_cortex-a15_neon-vfpv4
           - mips_24kc
           - x86_64
+        ccache:
+          - ''
+          - '1'
+        exclude:
+          # Only test ccache on mips_24kc to avoid doubling CI time
+          - ccache: '1'
+            arch: aarch64_generic
+          - ccache: '1'
+            arch: arm_cortex-a15_neon-vfpv4
+          - ccache: '1'
+            arch: x86_64
 
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +44,7 @@ jobs:
           ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
           FEED_DIR: ${{ github.workspace }}/feed
           PACKAGES: vim privoxy
+          CCACHE: ${{ matrix.ccache }}
 
       - name: Verify packages saved
         run: find artifacts/bin/packages/${{ matrix.arch }}/packages/ -maxdepth 1 -name '*.[ai]pk' -type f | grep .

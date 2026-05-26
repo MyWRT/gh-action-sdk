@@ -1,4 +1,9 @@
-# OpenWrt GitHub Action SDK
+# OpenWrt GitHub Action SDK (MyWRT Fork)
+
+> **This is a fork of [openwrt/gh-action-sdk](https://github.com/openwrt/gh-action-sdk).**
+>
+> **Differences from upstream:**
+> - **ccache support**: set `CCACHE: '1'` to enable compiler caching across runs via GitHub Actions cache, with configurable size (`CCACHE_MAXSIZE`) and key prefix (`CCACHE_CACHE_PREFIX`).
 
 GitHub CI action to build packages via SDK using official OpenWrt SDK Docker
 containers. This is primary used to test build OpenWrt repositories but can
@@ -34,7 +39,7 @@ jobs:
           fetch-depth: 0
 
       - name: Build
-        uses: openwrt/gh-action-sdk@main
+        uses: mywrt/gh-action-sdk@main
         env:
           ARCH: ${{ matrix.arch }}
 
@@ -54,6 +59,16 @@ The action reads a few env variables:
 * `ARTIFACTS_DIR` determines where built packages and build logs are saved.
   Defaults to the default working directory (`GITHUB_WORKSPACE`).
 * `BUILD_LOG` stores build logs in `./logs`.
+* `CCACHE` enables ccache when set to `1`. The action restores and saves a
+  GitHub Actions cache for the selected SDK container and architecture.
+* `CCACHE_CACHE_PREFIX` overrides the GitHub Actions cache key prefix used for
+  ccache. Defaults to the runner OS, SDK container, and architecture.
+* `CCACHE_DIR` sets the host-side ccache directory cached by GitHub Actions.
+  Defaults to `$GITHUB_WORKSPACE/.ccache` and is mounted as `/ccache` in the SDK
+  container.
+* `CCACHE_MAXSIZE` sets the ccache maximum size. Defaults to `1G`.
+* `CCACHE_COMPILERCHECK` and `CCACHE_RECACHE` are passed through to ccache when
+  ccache is enabled.
 * `CONTAINER` can set other SDK containers than `openwrt/sdk`.
 * `EXTRA_FEEDS` are added to the `feeds.conf`, where `|` are replaced by white
   spaces.
