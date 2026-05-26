@@ -4,11 +4,18 @@
 >
 > **Differences from upstream:**
 > - **ccache support**: set `CCACHE: '1'` to enable compiler caching across runs via GitHub Actions cache, with configurable size (`CCACHE_MAXSIZE`) and key prefix (`CCACHE_CACHE_PREFIX`).
+> - **Docker layer cache disabled**: the SDK wrapper image is built without BuildKit's GitHub Actions cache so repository cache quota can be reserved for ccache.
 
 GitHub CI action to build packages via SDK using official OpenWrt SDK Docker
 containers. This is primary used to test build OpenWrt repositories but can
 also be used for downstream projects maintaining their own package
 repositories.
+
+This fork intentionally does not cache Docker image layers. The upstream action
+uses BuildKit's GitHub Actions cache for the small SDK wrapper image, but those
+cached SDK layers can consume most of a repository's default 10 GB Actions cache
+quota. Prefer enabling ccache for compiler outputs instead, since that usually
+has a larger impact on repeated package build time.
 
 ## Example usage
 
