@@ -36,8 +36,8 @@ setup_ccache() {
 	ccache -s || true
 
 	touch .config
-	if [ -x ./scripts/config ]; then
-		./scripts/config --file .config -e CCACHE -s CCACHE_DIR "$CCACHE_DIR"
+	if [ -x ./scripts/config/conf ]; then
+		./scripts/config/conf --file .config -e CCACHE -s CCACHE_DIR "$CCACHE_DIR"
 	else
 		{
 			echo 'CONFIG_CCACHE=y'
