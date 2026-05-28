@@ -30,11 +30,34 @@ runs:
         else
           echo "ccache_enabled=0" >> "$GITHUB_OUTPUT"
         fi
+
+        if [ "${SDK_CACHE:-0}" = '1' ]; then
+          sdk_cache_dir="${SDK_CACHE_DIR:-${RUNNER_TEMP:-$GITHUB_WORKSPACE}/openwrt-sdk-cache}"
+          sdk_cache_container="${CONTAINER:-ghcr.io/openwrt/sdk}"
+          sdk_cache_arch="${ARCH:-mips_24kc}"
+          sdk_cache_scope="${sdk_cache_container}-${sdk_cache_arch}"
+          sdk_cache_scope="${sdk_cache_scope//[^A-Za-z0-9_.-]/-}"
+          sdk_cache_prefix="${SDK_CACHE_PREFIX:-sdk-cache-${RUNNER_OS:-Linux}-$sdk_cache_scope}"
+
+          echo "sdk_cache_enabled=1" >> "$GITHUB_OUTPUT"
+          echo "sdk_cache_dir=$sdk_cache_dir" >> "$GITHUB_OUTPUT"
+          echo "sdk_cache_key=$sdk_cache_prefix-${GITHUB_RUN_ID:-0}" >> "$GITHUB_OUTPUT"
+          {
+            echo 'sdk_cache_restore_keys<<EOF'
+            echo "$sdk_cache_prefix-"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+        else
+          echo "sdk_cache_enabled=0" >> "$GITHUB_OUTPUT"
+        fi
       shell: bash
       id: inputs
     - run: mkdir -p "${{ steps.inputs.outputs.ccache_dir }}"
       shell: bash
       if: steps.inputs.outputs.ccache_enabled == '1'
+    - run: mkdir -p "${{ steps.inputs.outputs.sdk_cache_dir }}"
+      shell: bash
+      if: steps.inputs.outputs.sdk_cache_enabled == '1'
     -
       name: Restore ccache
       if: steps.inputs.outputs.ccache_enabled == '1'
@@ -43,11 +66,22 @@ runs:
         path: ${{ steps.inputs.outputs.ccache_dir }}
         key: ${{ steps.inputs.outputs.ccache_key }}
         restore-keys: ${{ steps.inputs.outputs.ccache_restore_keys }}
+    -
+      name: Restore SDK cache
+      if: steps.inputs.outputs.sdk_cache_enabled == '1'
+      uses: actions/cache@v5
+      with:
+        path: ${{ steps.inputs.outputs.sdk_cache_dir }}
+        key: ${{ steps.inputs.outputs.sdk_cache_key }}
+        restore-keys: ${{ steps.inputs.outputs.sdk_cache_restore_keys }}
     - run: sudo chown -R 1000:1000 ${{ steps.inputs.outputs.artifacts_dir }} ${{ steps.inputs.outputs.feed_dir }}
       shell: bash
     - run: sudo chown -R 1000:1000 "${{ steps.inputs.outputs.ccache_dir }}"
       shell: bash
       if: steps.inputs.outputs.ccache_enabled == '1'
+    - run: sudo chown -R 1000:1000 "${{ steps.inputs.outputs.sdk_cache_dir }}"
+      shell: bash
+      if: steps.inputs.outputs.sdk_cache_enabled == '1'
     -
       name: Set up Docker QEMU
       uses: docker/setup-qemu-action@v4
@@ -81,6 +115,15 @@ runs:
           )
         fi
 
+        sdk_cache_args=()
+        if [ "${SDK_CACHE:-0}" = '1' ]; then
+          sdk_cache_args=(
+            --env SDK_CACHE=1
+            --env SDK_CACHE_DIR=/sdk-cache
+            -v "${{ steps.inputs.outputs.sdk_cache_dir }}:/sdk-cache"
+          )
+        fi
+
         docker run --rm \
           --env BUILD \
           --env BUILD_LOG \
@@ -100,6 +143,7 @@ runs:
           --env INDEX \
           --env V \
           "${ccache_args[@]}" \
+          "${sdk_cache_args[@]}" \
           -v ${{ steps.inputs.outputs.artifacts_dir }}:/artifacts \
           -v ${{ steps.inputs.outputs.feed_dir }}:/feed \
           sdk
@@ -113,3 +157,6 @@ runs:
     - run: sudo chown -R "$(id -u):$(id -g)" "${{ steps.inputs.outputs.ccache_dir }}"
       shell: bash
       if: always() && steps.inputs.outputs.ccache_enabled == '1'
+    - run: sudo chown -R "$(id -u):$(id -g)" "${{ steps.inputs.outputs.sdk_cache_dir }}"
+      shell: bash
+      if: always() && steps.inputs.outputs.sdk_cache_enabled == '1'

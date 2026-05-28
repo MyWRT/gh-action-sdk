@@ -47,6 +47,106 @@ setup_ccache() {
 	endgroup
 }
 
+restore_sdk_cache() {
+	[ "${SDK_CACHE:-0}" = '1' ] || return 0
+
+	SDK_CACHE_DIR="${SDK_CACHE_DIR:-/sdk-cache}"
+
+	group "restore SDK cache"
+	if [ ! -d "$SDK_CACHE_DIR" ]; then
+		echo "SDK_CACHE=1 but SDK_CACHE_DIR does not exist: $SDK_CACHE_DIR"
+		return 1
+	fi
+
+	local restored=0
+	local src dest
+	mkdir -p build_dir staging_dir
+
+	if [ -d "$SDK_CACHE_DIR/build_dir" ]; then
+		while IFS= read -r -d '' src; do
+			dest="build_dir/$(basename "$src")"
+			rm -rf "$dest"
+			cp -a "$src" "$dest"
+			restored=1
+		done < <(find "$SDK_CACHE_DIR/build_dir" -mindepth 1 -maxdepth 1 -type d \( -name 'target-*' -o -name 'hostpkg' \) -print0)
+	fi
+
+	if [ -d "$SDK_CACHE_DIR/staging_dir" ]; then
+		while IFS= read -r -d '' src; do
+			dest="staging_dir/$(basename "$src")"
+			rm -rf "$dest"
+			cp -a "$src" "$dest"
+			restored=1
+		done < <(find "$SDK_CACHE_DIR/staging_dir" -mindepth 1 -maxdepth 1 -type d \( -name 'target-*' -o -name 'hostpkg' \) -print0)
+	fi
+
+	[ "$restored" = '1' ] || echo 'No SDK cache entries restored'
+	endgroup
+}
+
+copy_sdk_cache_entries() {
+	local cache_subdir="$1"
+	local src
+
+	mkdir -p "$SDK_CACHE_DIR/$cache_subdir"
+	[ -d "$cache_subdir" ] || return 0
+
+	while IFS= read -r -d '' src; do
+		cp -a "$src" "$SDK_CACHE_DIR/$cache_subdir/"
+	done < <(find "$cache_subdir" -mindepth 1 -maxdepth 1 -type d \( -name 'target-*' -o -name 'hostpkg' \) -print0)
+}
+
+prune_sdk_cache() {
+	local base
+
+	if [ -d "$SDK_CACHE_DIR/build_dir" ]; then
+		while IFS= read -r -d '' base; do
+			find "$base" -mindepth 1 -maxdepth 1 \
+				\( -type d \( -name 'root-*' -o -name 'linux-*' \) \) \
+				-prune -exec rm -rf '{}' + 2>/dev/null || true
+			find "$base" \
+				\( -type d \( -name 'ipkg-*' -o -name 'apk-*' -o -name '.pkgdir' \) \) \
+				-prune -exec rm -rf '{}' + 2>/dev/null || true
+		done < <(find "$SDK_CACHE_DIR/build_dir" -mindepth 1 -maxdepth 1 -type d -name 'target-*' -print0)
+	fi
+
+	if [ -d "$SDK_CACHE_DIR/staging_dir" ]; then
+		while IFS= read -r -d '' base; do
+			find "$base" -mindepth 1 -maxdepth 1 \
+				\( -type d \( -name 'root-*' -o -name 'image' \) \) \
+				-prune -exec rm -rf '{}' + 2>/dev/null || true
+		done < <(find "$SDK_CACHE_DIR/staging_dir" -mindepth 1 -maxdepth 1 -type d -name 'target-*' -print0)
+		rm -rf "$SDK_CACHE_DIR/staging_dir/packages"
+	fi
+
+	for base in "$SDK_CACHE_DIR"/build_dir "$SDK_CACHE_DIR"/staging_dir; do
+		[ -d "$base" ] || continue
+		find "$base" \
+			\( -type d \( -name .git -o -name .svn \) \) \
+			-prune -exec rm -rf '{}' + 2>/dev/null || true
+		find "$base" -type f \
+			\( -name '*.orig' -o -name '*.rej' \) \
+			-delete 2>/dev/null || true
+	done
+}
+
+save_sdk_cache() {
+	[ "${SDK_CACHE:-0}" = '1' ] || return 0
+
+	SDK_CACHE_DIR="${SDK_CACHE_DIR:-/sdk-cache}"
+
+	group "save SDK cache"
+	mkdir -p "$SDK_CACHE_DIR"
+	rm -rf "$SDK_CACHE_DIR/build_dir" "$SDK_CACHE_DIR/staging_dir"
+
+	copy_sdk_cache_entries build_dir
+	copy_sdk_cache_entries staging_dir
+	prune_sdk_cache
+
+	du -sh "$SDK_CACHE_DIR" || true
+	endgroup
+}
+
 replace_golang() {
 	[ "${REPLACE_GOLANG:-0}" = '1' ] || return 0
 
@@ -80,10 +180,16 @@ group "bash setup.sh"
 [ ! -f setup.sh ] || bash setup.sh
 endgroup
 
+restore_sdk_cache
+
 FEEDNAME="${FEEDNAME:-action}"
 # Build requested packages by default, otherwise just check
 BUILD="${BUILD:-1}"
 BUILD_LOG="${BUILD_LOG:-1}"
+AUTOREMOVE_ARGS=()
+if [ "${SDK_CACHE:-0}" != '1' ]; then
+	AUTOREMOVE_ARGS=(CONFIG_AUTOREMOVE=y)
+fi
 
 if [ -n "$KEY_BUILD" ]; then
 	echo "$KEY_BUILD" > key-build
@@ -142,7 +248,7 @@ if [ -z "$PACKAGES" ]; then
 		BUILD_LOG="$BUILD_LOG" \
 		CONFIG_SIGNED_PACKAGES="$CONFIG_SIGNED_PACKAGES" \
 		IGNORE_ERRORS="$IGNORE_ERRORS" \
-		CONFIG_AUTOREMOVE=y \
+		"${AUTOREMOVE_ARGS[@]}" \
 		V="$V" \
 		-j "$(nproc)" || RET=$?
 else
@@ -201,12 +307,16 @@ else
 				exit 1
 			fi
 
-			group "make package/$PKG/clean"
-			make \
-				BUILD_LOG="$BUILD_LOG" \
-				IGNORE_ERRORS="$IGNORE_ERRORS" \
-				"package/$PKG/clean" V=s
-			endgroup
+			if [ "${SDK_CACHE:-0}" = '1' ]; then
+				echo "Skipping make package/$PKG/clean because SDK_CACHE=1"
+			else
+				group "make package/$PKG/clean"
+				make \
+					BUILD_LOG="$BUILD_LOG" \
+					IGNORE_ERRORS="$IGNORE_ERRORS" \
+					"package/$PKG/clean" V=s
+				endgroup
+			fi
 		fi
 
 		FILES_DIR=$(find /feed -path "*/$PKG/files")
@@ -242,7 +352,7 @@ else
 		make \
 			BUILD_LOG="$BUILD_LOG" \
 			IGNORE_ERRORS="$IGNORE_ERRORS" \
-			CONFIG_AUTOREMOVE=y \
+			"${AUTOREMOVE_ARGS[@]}" \
 			V="$V" \
 			-j "$(nproc)" \
 			"package/$PKG/compile" || {
@@ -274,5 +384,7 @@ fi
 if [ -d logs/ ]; then
 	mv logs/ /artifacts/
 fi
+
+save_sdk_cache
 
 exit "$RET"

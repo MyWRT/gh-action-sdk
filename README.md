@@ -4,7 +4,8 @@
 >
 > **Differences from upstream:**
 > - **ccache support**: set `CCACHE: '1'` to enable compiler caching across runs via GitHub Actions cache, with configurable size (`CCACHE_MAXSIZE`) and key prefix (`CCACHE_CACHE_PREFIX`).
-> - **Docker layer cache disabled**: the SDK wrapper image is built without BuildKit's GitHub Actions cache so repository cache quota can be reserved for ccache.
+> - **SDK intermediate cache support**: set `SDK_CACHE: '1'` to cache pruned OpenWrt SDK build and staging intermediates across runs.
+> - **Docker layer cache disabled**: the SDK wrapper image is built without BuildKit's GitHub Actions cache so repository cache quota can be reserved for ccache and SDK intermediates.
 > - **golang replacement**: set `REPLACE_GOLANG: '1'` to replace the SDK `feeds/packages/lang/golang` package with a newer external golang feed before building packages.
 
 GitHub CI action to build packages via SDK using official OpenWrt SDK Docker
@@ -15,8 +16,8 @@ repositories.
 This fork intentionally does not cache Docker image layers. The upstream action
 uses BuildKit's GitHub Actions cache for the small SDK wrapper image, but those
 cached SDK layers can consume most of a repository's default 10 GB Actions cache
-quota. Prefer enabling ccache for compiler outputs instead, since that usually
-has a larger impact on repeated package build time.
+quota. Prefer enabling ccache and, when useful, the optional SDK intermediate
+cache for repeated package builds.
 
 ## Example usage
 
@@ -100,6 +101,19 @@ The action reads a few env variables:
   to `26.x`.
 * `REPLACE_GOLANG_COMMIT` optionally checks out a specific commit after cloning
   the replacement golang repository for reproducible builds.
+* `SDK_CACHE` enables OpenWrt SDK intermediate-file caching when set to `1`.
+  The action caches pruned `build_dir/target-*`, `build_dir/hostpkg`,
+  `staging_dir/target-*`, and `staging_dir/hostpkg` entries. It intentionally
+  does not cache `dl/`, `bin/`, or `logs/`. When enabled, the action also avoids
+  `CONFIG_AUTOREMOVE=y` and skips the post-refresh `package/$PKG/clean` step so
+  restored package build directories are not immediately deleted.
+* `SDK_CACHE_DIR` sets the host-side SDK cache directory cached by GitHub
+  Actions. Defaults to `$RUNNER_TEMP/openwrt-sdk-cache` and is mounted as
+  `/sdk-cache` in the SDK container. Keeping this outside the workspace avoids
+  exposing cached SDK build trees through the default `/feed` mount.
+* `SDK_CACHE_PREFIX` overrides the GitHub Actions cache key prefix used for the
+  SDK intermediate cache. Defaults to the runner OS, SDK container, and
+  architecture.
 * `V` changes the build verbosity level.
 
 Example using a newer golang package:
