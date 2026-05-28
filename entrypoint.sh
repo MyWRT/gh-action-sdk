@@ -47,6 +47,31 @@ setup_ccache() {
 	endgroup
 }
 
+replace_golang() {
+	[ "${REPLACE_GOLANG:-0}" = '1' ] || return 0
+
+	local repo="${REPLACE_GOLANG_REPO:-https://github.com/sbwml/packages_lang_golang}"
+	local branch="${REPLACE_GOLANG_BRANCH:-26.x}"
+	local target="feeds/packages/lang/golang"
+
+	group "replace golang"
+	if [ ! -d "feeds/packages/lang" ]; then
+		echo 'REPLACE_GOLANG=1 requires the default packages feed at feeds/packages/lang'
+		return 1
+	fi
+
+	rm -rf "$target"
+	git clone --depth=1 --branch "$branch" "$repo" "$target"
+
+	if [ -n "${REPLACE_GOLANG_COMMIT:-}" ]; then
+		git -C "$target" fetch --depth=1 origin "$REPLACE_GOLANG_COMMIT"
+		git -C "$target" -c advice.detachedHead=false checkout "$REPLACE_GOLANG_COMMIT"
+	fi
+
+	./scripts/feeds update -i packages
+	endgroup
+}
+
 trap 'endgroup' ERR
 
 group "bash setup.sh"
@@ -94,6 +119,8 @@ endgroup
 group "feeds update -a"
 ./scripts/feeds update -a
 endgroup
+
+replace_golang
 
 setup_ccache
 

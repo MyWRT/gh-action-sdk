@@ -93,6 +93,10 @@ runs:
           --env NO_REFRESH_CHECK \
           --env NO_SHFMT_CHECK \
           --env PACKAGES \
+          --env REPLACE_GOLANG \
+          --env REPLACE_GOLANG_REPO \
+          --env REPLACE_GOLANG_BRANCH \
+          --env REPLACE_GOLANG_COMMIT \
           --env INDEX \
           --env V \
           "${ccache_args[@]}" \

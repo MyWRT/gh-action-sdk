@@ -5,6 +5,7 @@
 > **Differences from upstream:**
 > - **ccache support**: set `CCACHE: '1'` to enable compiler caching across runs via GitHub Actions cache, with configurable size (`CCACHE_MAXSIZE`) and key prefix (`CCACHE_CACHE_PREFIX`).
 > - **Docker layer cache disabled**: the SDK wrapper image is built without BuildKit's GitHub Actions cache so repository cache quota can be reserved for ccache.
+> - **golang replacement**: set `REPLACE_GOLANG: '1'` to replace the SDK `feeds/packages/lang/golang` package with a newer external golang feed before building packages.
 
 GitHub CI action to build packages via SDK using official OpenWrt SDK Docker
 containers. This is primary used to test build OpenWrt repositories but can
@@ -91,4 +92,20 @@ The action reads a few env variables:
 * `NO_REFRESH_CHECK` disable check if patches need a refresh.
 * `NO_SHFMT_CHECK` disable check if init files are formated
 * `PACKAGES` (Optional) specify the list of packages (space separated) to be built
+* `REPLACE_GOLANG` replaces the SDK `feeds/packages/lang/golang` package when set to `1`.
+  This is useful when packages need a newer Go toolchain than the SDK default.
+* `REPLACE_GOLANG_REPO` sets the replacement golang repository. Defaults to
+  `https://github.com/sbwml/packages_lang_golang`.
+* `REPLACE_GOLANG_BRANCH` sets the replacement golang repository branch. Defaults
+  to `26.x`.
+* `REPLACE_GOLANG_COMMIT` optionally checks out a specific commit after cloning
+  the replacement golang repository for reproducible builds.
 * `V` changes the build verbosity level.
+
+Example using a newer golang package:
+
+```yaml
+env:
+  REPLACE_GOLANG: '1'
+  REPLACE_GOLANG_BRANCH: 26.x
+```
