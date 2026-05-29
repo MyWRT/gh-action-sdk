@@ -65,8 +65,10 @@ restore_sdk_cache() {
 	if [ -d "$SDK_CACHE_DIR/build_dir" ]; then
 		while IFS= read -r -d '' src; do
 			dest="build_dir/$(basename "$src")"
-			rm -rf "$dest"
-			cp -a "$src" "$dest"
+			# Merge into the freshly extracted SDK tree so pruned caches do not
+			# remove SDK-provided kernel build trees required by kmod packages.
+			mkdir -p "$dest"
+			cp -a "$src"/. "$dest"/
 			restored=1
 		done < <(find "$SDK_CACHE_DIR/build_dir" -mindepth 1 -maxdepth 1 -type d \( -name 'target-*' -o -name 'hostpkg' \) -print0)
 	fi
@@ -74,8 +76,8 @@ restore_sdk_cache() {
 	if [ -d "$SDK_CACHE_DIR/staging_dir" ]; then
 		while IFS= read -r -d '' src; do
 			dest="staging_dir/$(basename "$src")"
-			rm -rf "$dest"
-			cp -a "$src" "$dest"
+			mkdir -p "$dest"
+			cp -a "$src"/. "$dest"/
 			restored=1
 		done < <(find "$SDK_CACHE_DIR/staging_dir" -mindepth 1 -maxdepth 1 -type d \( -name 'target-*' -o -name 'hostpkg' \) -print0)
 	fi
